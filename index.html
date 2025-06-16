@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot în Stil Gemini</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
+
+    <style>
+        /* Adăugăm fontul Inter pentru un aspect similar cu cel al produselor Google */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Setări pentru scrollbar personalizat */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4a5568;
+            border-radius: 3px;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #718096;
+        }
+
+        /* Animație pentru apariția widget-ului */
+        #chat-widget {
+            transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+        }
+
+        /* Animație pentru apariția mesajelor */
+        @keyframes message-in {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .message-animate {
+            animation: message-in 0.4s ease-in-out forwards;
+        }
+
+        /* Animație pentru indicatorul de "thinking" inspirată de Gemini */
+        .gemini-spinner {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+        }
+        .gemini-spinner svg {
+            animation: rotate 2s linear infinite;
+        }
+        .gemini-spinner .path {
+            stroke-dasharray: 1, 200;
+            stroke-dashoffset: 0;
+            stroke-linecap: round;
+            animation: dash 1.5s ease-in-out infinite;
+        }
+        @keyframes rotate {
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes dash {
+            0% {
+                stroke-dasharray: 1, 200;
+                stroke-dashoffset: 0;
+            }
+            50% {
+                stroke-dasharray: 89, 200;
+                stroke-dashoffset: -35px;
+            }
+            100% {
+                stroke-dasharray: 89, 200;
+                stroke-dashoffset: -124px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-200">
+
+    <button id="chat-toggle" class="fixed bottom-5 right-5 w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-white flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform duration-300 z-[9998]">
+        <div id="icon-open">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+        </div>
+        <div id="icon-close" class="hidden">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+        </div>
+    </button>
+
+    <div id="chat-widget" class="fixed bottom-24 right-5 w-[calc(100vw-40px)] h-[70vh] max-w-md max-h-[600px] flex flex-col bg-white dark:bg-slate-800 rounded-2xl shadow-2xl origin-bottom-right opacity-0 transform scale-95 invisible z-[9999]">
+        
+        <div class="flex-shrink-0 flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700">
+            <div class="flex items-center gap-3">
+                <img class="w-11 h-11 rounded-full" src="https://api.dicebear.com/8.x/bottts-neutral/svg?seed=Gigi-AI" alt="AI Avatar">
+                <div>
+                    <h3 class="font-bold text-gray-800 dark:text-white">Gigi de la Timpia AI</h3>
+                    <p class="text-xs text-green-500 dark:text-green-400">Online</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="theme-toggle" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                    <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                    <svg id="theme-icon-dark" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                </button>
+                 <button id="mute-toggle" class="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors">
+                    <svg id="mute-icon-on" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                    <svg id="mute-icon-off" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" clip-rule="evenodd" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" /></svg>
+                </button>
+            </div>
+        </div>
+
+        <div id="chat-messages" class="flex-grow p-4 md:p-6 overflow-y-auto custom-scrollbar bg-gray-50 dark:bg-slate-900/50 space-y-4">
+             </div>
+
+        <div class="flex-shrink-0 p-4 bg-white dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700">
+            <form id="chat-form" class="relative">
+                <input type="text" id="chat-input" placeholder="Scrie un mesaj..." autocomplete="off"
+                    class="w-full py-3 pl-4 pr-14 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-800 dark:text-gray-200 placeholder-gray-500 dark:placeholder-gray-400 border border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                <button type="submit" id="chat-submit" aria-label="Trimite" 
+                    class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-indigo-500 text-white transition-all duration-300 scale-90 opacity-50 cursor-not-allowed">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // --- SELECTORI DOM ---
+        const dom = {
+            widget: document.getElementById('chat-widget'),
+            toggle: document.getElementById('chat-toggle'),
+            iconOpen: document.getElementById('icon-open'),
+            iconClose: document.getElementById('icon-close'),
+            messages: document.getElementById('chat-messages'),
+            form: document.getElementById('chat-form'),
+            input: document.getElementById('chat-input'),
+            submitBtn: document.getElementById('chat-submit'),
+            themeToggle: document.getElementById('theme-toggle'),
+            themeIconLight: document.getElementById('theme-icon-light'),
+            themeIconDark: document.getElementById('theme-icon-dark'),
+            muteToggle: document.getElementById('mute-toggle'),
+            muteIconOn: document.getElementById('mute-icon-on'),
+            muteIconOff: document.getElementById('mute-icon-off'),
+        };
+
+        // --- STAREA APLICAȚIEI ---
+        const state = {
+            isMuted: localStorage.getItem('chat_isMuted') === 'true',
+            isDark: localStorage.getItem('chat_isDark') === 'true',
+            isTyping: false,
+            isOpen: false
+        };
+        
+        // --- CONFIGURARE ---
+        const N8N_WEBHOOK_URL = 'https://n8n-mui5.onrender.com/webhook-test/timpiachat';
+        const TYPING_SPEED_MS = 20; // Mai mic = mai rapid
+
+        // --- EFECTE SONORE (cu Tone.js) ---
+        let soundsInitialized = false;
+        let sounds = null; // Initialize sounds to null
+
+        function initSounds() {
+            if (!soundsInitialized) {
+                try {
+                    // Only initialize synths if AudioContext is running or can be started
+                    sounds = {
+                        send: new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.1 } }).toDestination(),
+                        receive: new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 0.1 } }).toDestination(),
+                        typing: new Tone.NoiseSynth({ noise: { type: 'brown' }, envelope: { attack: 0.005, decay: 0.01, sustain: 0, release: 0.01 } }).toDestination()
+                    };
+                    soundsInitialized = true;
+                } catch (e) {
+                    console.warn("Could not initialize Tone.js sounds, possibly no AudioContext:", e);
+                    soundsInitialized = false; // Ensure it stays false if initialization fails
+                }
+            }
+        }
+
+        const playSound = (sound, note = null, duration = '16n') => {
+            // Only play if not muted, sounds are initialized, and audio context is running
+            if (!state.isMuted && soundsInitialized && Tone.context.state === 'running') {
+                sound.triggerAttackRelease(note, duration);
+            }
+        };
+
+        // --- FUNCȚII PRINCIPALE ---
+
+        /**
+         * Trimite mesajul la webhook-ul n8n și gestionează răspunsul.
+         */
+        const sendMessage = async (e) => {
+            e.preventDefault();
+            const messageText = dom.input.value.trim();
+            if (!messageText || state.isTyping) return;
+
+            // Attempt to start audio context on send, just in case it wasn't started earlier
+            try { await Tone.start(); initSounds(); } catch (e) { console.warn("AudioContext start failed on send:", e); }
+
+            playSound(sounds.send, 'C5');
+            addMessage(messageText, 'user');
+            dom.input.value = '';
+            handleInputChange();
+            showThinking();
+
+            try {
+                const response = await fetch(N8N_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: messageText }),
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                hideThinking();
+                playSound(sounds.receive, 'G5');
+
+                // Asigură-te că formatul răspunsului de la n8n este corect
+                const responseText = data.response || "Scuze, am întâmpinat o eroare la procesarea răspunsului.";
+                typeOutMessage(responseText);
+
+            } catch (error) {
+                console.error("Chat Error:", error);
+                hideThinking();
+                playSound(sounds.receive, 'A4');
+                typeOutMessage(`Oops! A apărut o problemă de conexiune: ${error.message}`);
+            }
+        };
+
+        /**
+         * Adaugă un mesaj static în interfața de chat.
+         * @param {string} text - Conținutul mesajului.
+         * @param {'user' | 'ai'} sender - Expeditorul mesajului.
+         */
+        const addMessage = (text, sender) => {
+            const messageWrapper = createMessageWrapper(sender);
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'w-fit max-w-full px-4 py-2.5 rounded-2xl';
+            bubble.textContent = text;
+            
+            if(sender === 'user'){
+                bubble.classList.add('bg-gradient-to-br', 'from-indigo-500', 'to-purple-500', 'text-white', 'rounded-br-lg');
+            } else {
+                bubble.classList.add('bg-gray-200', 'dark:bg-slate-700', 'text-gray-800', 'dark:text-gray-200', 'rounded-bl-lg');
+            }
+            
+            messageWrapper.appendChild(bubble);
+            appendTimestamp(messageWrapper, sender);
+            dom.messages.appendChild(messageWrapper);
+            scrollToBottom();
+        };
+
+        /**
+         * Simulează efectul de "tastare" pentru răspunsul AI-ului.
+         * @param {string} text - Răspunsul complet de la AI.
+         */
+        const typeOutMessage = (text) => {
+            state.isTyping = true;
+            const messageWrapper = createMessageWrapper('ai');
+            const bubble = document.createElement('div');
+            bubble.className = 'w-fit max-w-full px-4 py-2.5 rounded-2xl bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-gray-200 rounded-bl-lg prose prose-sm dark:prose-invert';
+            bubble.innerHTML = '<span class="typing-cursor">▍</span>';
+            
+            messageWrapper.appendChild(bubble);
+            dom.messages.appendChild(messageWrapper);
+            scrollToBottom();
+
+            let i = 0;
+            const interval = setInterval(() => {
+                if (i < text.length) {
+                    if(i === 0) bubble.textContent = ''; // sterge cursorul initial
+                    bubble.textContent += text.charAt(i);
+                    playSound(sounds.typing, 'C4', '64n');
+                    i++;
+                    scrollToBottom();
+                } else {
+                    clearInterval(interval);
+                    // Aplică formatarea Markdown după ce textul a fost scris
+                    bubble.innerHTML = marked.parse(text, { breaks: true, gfm: true });
+                    appendTimestamp(messageWrapper, 'ai');
+                    state.isTyping = false;
+                }
+            }, TYPING_SPEED_MS);
+        };
+        
+        /**
+         * Creează container-ul pentru un mesaj.
+         * @param {'user' | 'ai'} sender - Expeditorul.
+         * @returns {HTMLDivElement} - Elementul creat.
+         */
+        const createMessageWrapper = (sender) => {
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex flex-col message-animate ${sender === 'user' ? 'items-end' : 'items-start'}`;
+            return wrapper;
+        };
+
+        /**
+         * Adaugă data și ora la un mesaj.
+         * @param {HTMLDivElement} wrapper - Container-ul mesajului.
+         * @param {'user' | 'ai'} sender - Expeditorul.
+         */
+        const appendTimestamp = (wrapper, sender) => {
+            const timestamp = document.createElement('div');
+            timestamp.className = `text-xs mt-1.5 px-2 ${sender === 'user' ? 'text-right' : 'text-left'} text-gray-400 dark:text-slate-500`;
+            timestamp.textContent = new Date().toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
+            wrapper.appendChild(timestamp);
+        };
+
+        /**
+         * Afișează indicatorul de "gândire".
+         */
+        const showThinking = () => {
+            const indicator = document.createElement('div');
+            indicator.id = 'thinking-indicator';
+            indicator.className = 'flex items-center gap-3 p-2 message-animate';
+            indicator.innerHTML =                 `<div class="gemini-spinner text-indigo-500">
+                    <svg viewBox="0 0 50 50">
+                        <circle class="path" cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="5"></circle>
+                    </svg>
+                </div>
+                <p class="text-sm text-gray-500 dark:text-slate-400">Gigi se gândește...</p>`;            dom.messages.appendChild(indicator);
+            scrollToBottom();
+        };
+
+        const hideThinking = () => document.getElementById('thinking-indicator')?.remove();
+        const scrollToBottom = () => dom.messages.scrollTop = dom.messages.scrollHeight;
+
+        // --- FUNCȚII UTILITARE UI ---
+
+        const toggleChat = async () => {
+            state.isOpen = !state.isOpen;
+            dom.widget.classList.toggle('opacity-0', !state.isOpen);
+            dom.widget.classList.toggle('scale-95', !state.isOpen);
+            dom.widget.classList.toggle('invisible', !state.isOpen);
+            dom.iconOpen.classList.toggle('hidden', state.isOpen);
+            dom.iconClose.classList.toggle('hidden', !state.isOpen);
+            if(state.isOpen) {
+                dom.input.focus();
+                // Attempt to start AudioContext and initialize sounds on user gesture
+                try {
+                    // This will resume the AudioContext if it's suspended
+                    // or start it if it hasn't been started yet.
+                    await Tone.start(); 
+                    initSounds(); // Initialize sounds after context is confirmed running
+                } catch (e) {
+                    console.warn("Could not start AudioContext or initialize sounds:", e);
+                }
+            }
+        };
+
+        const updateTheme = () => {
+            document.documentElement.classList.toggle('dark', state.isDark);
+            dom.themeIconLight.classList.toggle('hidden', state.isDark);
+            dom.themeIconDark.classList.toggle('hidden', !state.isDark);
+            localStorage.setItem('chat_isDark', state.isDark);
+        };
+
+        const updateMute = () => {
+            dom.muteIconOn.classList.toggle('hidden', state.isMuted);
+            dom.muteIconOff.classList.toggle('hidden', !state.isMuted);
+            localStorage.setItem('chat_isMuted', state.isMuted);
+        };
+        
+        const handleInputChange = () => {
+            const hasText = dom.input.value.trim().length > 0;
+            dom.submitBtn.classList.toggle('scale-100', hasText);
+            dom.submitBtn.classList.toggle('scale-90', !hasText);
+            dom.submitBtn.classList.toggle('opacity-100', hasText);
+            dom.submitBtn.classList.toggle('opacity-50', !hasText);
+            dom.submitBtn.classList.toggle('cursor-pointer', hasText);
+            dom.submitBtn.classList.toggle('cursor-not-allowed', !hasText);
+        };
+
+        // --- ATAȘARE EVENIMENTE ---
+        dom.toggle.addEventListener('click', toggleChat);
+        dom.form.addEventListener('submit', sendMessage);
+        dom.input.addEventListener('input', handleInputChange);
+        dom.themeToggle.addEventListener('click', () => { 
+            state.isDark = !state.isDark; 
+            updateTheme(); 
+            // Also try to start audio context if theme is toggled
+            try {
+                Tone.start();
+                initSounds();
+            } catch(e) { /* ignore */ }
+        });
+        dom.muteToggle.addEventListener('click', () => { 
+            state.isMuted = !state.isMuted; 
+            updateMute(); 
+            // Also try to start audio context if mute is toggled
+            try {
+                Tone.start();
+                initSounds();
+            } catch(e) { /* ignore */ }
+        });
+        
+        // --- INIȚIALIZARE ---
+        updateTheme();
+        updateMute();
+        handleInputChange();
+        addMessage("Salut! Sunt Gigi, asistentul tău virtual. Cu ce te pot ajuta astăzi?", "ai");
+    });
+    </script>
+</body>
+</html>
